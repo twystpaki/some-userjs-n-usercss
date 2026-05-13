@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         MangaDex - New Comment Section Skipper
 // @namespace    mangadex.org.newcommentsectionskipper
-// @version      1.2.0.20260514
+// @version      1.3.0.20260514
 // @description  The new comment section annoys me, this script try to skip the need to click another button to get to the "old" comment page.
 // @author       twystpaki
 // @match        https://mangadex.org/*
 // @match        https://www.mangadex.org/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=mangadex.org
-// @grant        none
+// @grant        GM_setClipboard
+// @grant        GM_registerMenuCommand
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -25,6 +26,10 @@
 
     const outerCommentButtonAddClickEventToSkipToForumThread = true;
     const outerCommentButtonAddMiddleClickEventToSkipToForumThread = true;
+
+    const menulabelCopyForumThreadLink = 'Copy link to forum thread';
+    const menulabelOpenForumThreadNewTab = 'Open forum thread in new tab';
+    const menulabelOpenForumThreadSameTab = 'Open forum thread in this tab';
 
     /** I don't know if a userscript that can just bypass this completely is possible, (I'm not really a webdev)
       * but for this script, it will wait for the button that link to forum thread to appear (using MutationObserver),
@@ -54,10 +59,21 @@
         });
     }
 
-    async function goToForumThread(method = 'href') {
+    async function getHrefToForumThread() {
         const linkToForumThread = await waitAndGetElement(queryChapterPageLinkToForumThread);
         if (!linkToForumThread || !linkToForumThread.href) return new Error(`Cannot get "${queryChapterPageLinkToForumThread}" or its href.`);
-        const href = linkToForumThread.href;
+        return linkToForumThread.href;
+    }
+
+    async function copyToClipboardHrefToForumThread() {
+        const href = await getHrefToForumThread();
+        if (typeof href !== 'string') return;
+        GM_setClipboard(href, 'text', () => console.log(`${consolePrefix}Copy link to forum thread to clipboard`));
+    }
+
+    async function goToForumThread(method) {
+        const href = await getHrefToForumThread();
+        if (typeof href !== 'string') return;
         if (typeof method !== 'string') method = 'href';
         method = method.trim().toLowerCase();
         switch (method) {
@@ -81,18 +97,18 @@
         }
     }
 
-    function outerCommentButtonLeftClickFn(e) {
+    async function outerCommentButtonLeftClickFn(e) {
         e.preventDefault();
-        goToForumThread();
+        await goToForumThread();
     }
     function outerCommentButtonMiddleMouseDownFn(e) {
         if (e.button !== 1) return;
         e.preventDefault();
     }
-    function outerCommentButtonMiddleMouseUpFn(e) {
+    async function outerCommentButtonMiddleMouseUpFn(e) {
         if (e.button !== 1) return;
         e.preventDefault();
-        goToForumThread('newtab');
+        await goToForumThread('newtab');
     }
 
     async function actionOnChapterPageLoad() {
@@ -100,7 +116,7 @@
         console.log(`${consolePrefix}Chapter page detected, perform main action of userscript.`)
         try {
             const shouldRedirectOnPageLoad = typeof location.search === 'string' && location.search.includes(urlParamToDetectForImmediateRedirectInChapterPage);
-            if (shouldRedirectOnPageLoad) return goToForumThread('replace');
+            if (shouldRedirectOnPageLoad) return await goToForumThread('replace');
 
             const outerCommentButton = await waitAndGetElement(queryChapterPageOuterCommentButton);
             if (outerCommentButton) {
@@ -123,7 +139,11 @@
         }
     }
 
-    actionOnChapterPageLoad();
+    actionOnChapterPageLoad(); // run action once on script init
+
+    if (menulabelCopyForumThreadLink) GM_registerMenuCommand(menulabelCopyForumThreadLink, copyToClipboardHrefToForumThread);
+    if (menulabelOpenForumThreadNewTab) GM_registerMenuCommand(menulabelOpenForumThreadNewTab, async () => await goToForumThread('newtab'));
+    if (menulabelOpenForumThreadSameTab) GM_registerMenuCommand(menulabelOpenForumThreadSameTab, async () => await goToForumThread());
 
     if ('navigation' in window) {
         console.log(`${consolePrefix}Add event listener for "navigatesuccess" to support modern web app navigation.`);
