@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MangaDex - New Comment Section Skipper
 // @namespace    mangadex.org.newcommentsectionskipper
-// @version      1.0.0.20260512
+// @version      1.1.0.20260514
 // @description  The new comment section annoys me, this script try to skip the need to click another button to get to the "old" comment page.
 // @author       twystpaki
 // @match        https://mangadex.org/*
@@ -22,6 +22,10 @@
     const urlPathnameToDetectChapterPageStartsWith = '/chapter/';
     const urlParamToDetectForImmediateRedirectInChapterPage = 'comments=1';
     const regexUrlPathnameToGetCurrentLocationWithoutPage = /^(\/[a-z0-9\-]+\/[a-z0-9\-]+)\/?/i;
+
+    const outerCommentButtonAddClickEventToSkipToForumThread = true;
+    const outerCommentButtonAddMiddleClickEventToSkipToForumThread = true;
+    const buttonScriptInitClassName = 'newcommentsectionskipper-userscript-already-init';
 
     /** I don't know if a userscript that can just bypass this completely is possible, (I'm not really a webdev)
       * but for this script, it will wait for the button that link to forum thread to appear (using MutationObserver),
@@ -58,21 +62,53 @@
             const linkToForumThread = await waitAndGetElement(queryChapterPageLinkToForumThread);
             if (!linkToForumThread || !linkToForumThread.href) return new Error(`Cannot get "${queryChapterPageLinkToForumThread}" or its href.`);
 
-            const goToForumThread = (doReplace) => {
-                console.log(`${consolePrefix}Redirecting... (${doReplace ? 'location.replace()' : 'location.href='})`);
-                doReplace ? (location.replace(linkToForumThread.href)) : (location.href = linkToForumThread.href);
-                return 0;
+            const goToForumThread = (method = 'href') => {
+                switch (method.trim().toLowerCase()) {
+                    case 'redirect':
+                    case 'replace':
+                    case 'location.replace()':
+                        console.log(`${consolePrefix}Opening forum thread... (location.replace())`);
+                        location.replace(linkToForumThread.href);
+                        return 'location.replace()';
+                    case 'newtab':
+                    case 'window':
+                    case 'open':
+                    case 'window.open()':
+                        console.log(`${consolePrefix}Opening forum thread... (window.open())`);
+                        window.open(linkToForumThread.href, '_blank');
+                        return 'window.open()';
+                    default:
+                        console.log(`${consolePrefix}Opening forum thread... (location.href=)`);
+                        location.href = linkToForumThread.href;
+                        return 'location.href=';
+                }
             };
             const shouldRedirectOnPageLoad = typeof location.search === 'string' && location.search.includes(urlParamToDetectForImmediateRedirectInChapterPage);
-            if (shouldRedirectOnPageLoad) return goToForumThread(true);
+            if (shouldRedirectOnPageLoad) return goToForumThread('replace');
 
             const outerCommentButton = await waitAndGetElement(queryChapterPageOuterCommentButton);
             if (outerCommentButton) {
-                console.log(`${consolePrefix}Add custom click event for "outer comment button" in the sidebar.`);
-                outerCommentButton.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    goToForumThread();
-                });
+                if (outerCommentButton.classList.contains(buttonScriptInitClassName)) return;
+                if (outerCommentButtonAddClickEventToSkipToForumThread) {
+                    console.log(`${consolePrefix}Add custom click event for "outer comment button" in the sidebar.`);
+                    outerCommentButton.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        goToForumThread();
+                    });
+                }
+                if (outerCommentButtonAddMiddleClickEventToSkipToForumThread) {
+                    console.log(`${consolePrefix}Add custom middle-click event for "outer comment button" in the sidebar.`);
+                    outerCommentButton.addEventListener('mousedown', (e) => {
+                        if (e.button !== 1) return;
+                        e.preventDefault();
+                    });
+                    outerCommentButton.addEventListener('mouseup', (e) => {
+                        if (e.button !== 1) return;
+                        e.preventDefault();
+                        goToForumThread('newtab');
+                    });
+                }
+                outerCommentButton.classList.add(buttonScriptInitClassName);
             }
             return 1;
         } catch (error) {
