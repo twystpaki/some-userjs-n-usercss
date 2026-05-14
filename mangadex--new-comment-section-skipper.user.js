@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MangaDex - New Comment Section Skipper
 // @namespace    mangadex.org.newcommentsectionskipper
-// @version      1.3.0.20260514
+// @version      1.3.1.20260514
 // @description  The new comment section annoys me, this script try to skip the need to click another button to get to the "old" comment page.
 // @author       twystpaki
 // @match        https://mangadex.org/*
@@ -9,6 +9,7 @@
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=mangadex.org
 // @grant        GM_setClipboard
 // @grant        GM_registerMenuCommand
+// @grant        GM_unregisterMenuCommand
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -45,7 +46,7 @@
             if (existing) return resolve(existing);
             const timer = setTimeout(() => {
                 obs.disconnect();
-                reject(new Error(`Timed out waiting to get "${selector}" after ${timeout / 1000} seconds.`));
+                reject(new Error(`Timed out waiting to get \`${selector}\` after ${timeout / 1000} seconds.`));
             }, timeout);
             const obs = new MutationObserver(() => {
                 const el = document.querySelector(selector);
@@ -61,7 +62,7 @@
 
     async function getHrefToForumThread() {
         const linkToForumThread = await waitAndGetElement(queryChapterPageLinkToForumThread);
-        if (!linkToForumThread || !linkToForumThread.href) return new Error(`Cannot get "${queryChapterPageLinkToForumThread}" or its href.`);
+        if (!linkToForumThread || !linkToForumThread.href) return new Error(`Cannot get \`${queryChapterPageLinkToForumThread}\` or its href.`);
         return linkToForumThread.href;
     }
 
@@ -111,12 +112,67 @@
         await goToForumThread('newtab');
     }
 
+    let menuIdCopyForumThreadLink = null;
+    let menuIdOpenForumThreadNewTab = null;
+    let menuIdOpenForumThreadSameTab = null;
+    function addMenusAboutForumThread() {
+        if (!([
+            menuIdCopyForumThreadLink,
+            menuIdOpenForumThreadNewTab,
+            menuIdOpenForumThreadSameTab
+        ].includes(null))) return;
+        console.log(`${consolePrefix}Registering menus related to forum thread`);
+        if (menuIdCopyForumThreadLink === null && menulabelCopyForumThreadLink) {
+            menuIdCopyForumThreadLink = GM_registerMenuCommand(menulabelCopyForumThreadLink, copyToClipboardHrefToForumThread);
+        }
+        if (menuIdOpenForumThreadNewTab === null && menulabelOpenForumThreadNewTab) {
+            menuIdOpenForumThreadNewTab = GM_registerMenuCommand(menulabelOpenForumThreadNewTab, async () => await goToForumThread('newtab'));
+        }
+        if (menuIdOpenForumThreadSameTab === null && menulabelOpenForumThreadSameTab) {
+            menuIdOpenForumThreadSameTab = GM_registerMenuCommand(menulabelOpenForumThreadSameTab, async () => await goToForumThread());
+        }
+    }
+    function removeMenusAboutForumThread() {
+        if ([
+            menuIdCopyForumThreadLink,
+            menuIdOpenForumThreadNewTab,
+            menuIdOpenForumThreadSameTab
+        ].includes(null)) return;
+        console.log(`${consolePrefix}Unregistering menus related to forum thread`);
+        if (menuIdCopyForumThreadLink !== null) {
+            GM_unregisterMenuCommand(menuIdCopyForumThreadLink);
+            menuIdCopyForumThreadLink = null;
+        }
+        if (menuIdOpenForumThreadNewTab !== null) {
+            GM_unregisterMenuCommand(menuIdOpenForumThreadNewTab);
+            menuIdOpenForumThreadNewTab = null;
+        }
+        if (menuIdOpenForumThreadSameTab !== null) {
+            GM_unregisterMenuCommand(menuIdOpenForumThreadSameTab);
+            menuIdOpenForumThreadSameTab = null;
+        }
+    }
+
     async function actionOnChapterPageLoad() {
-        if (!location.pathname.startsWith(urlPathnameToDetectChapterPageStartsWith)) return;
-        console.log(`${consolePrefix}Chapter page detected, perform main action of userscript.`)
+        if (!location.pathname.startsWith(urlPathnameToDetectChapterPageStartsWith)) {
+            console.log(`${consolePrefix}Non-chapter page detected.`);
+            removeMenusAboutForumThread();
+            return -1;
+        }
+        console.log(`${consolePrefix}Chapter page detected, perform main action of userscript.`);
         try {
+            const href = await getHrefToForumThread();
+            if (typeof href !== 'string') {
+                console.error(`${consolePrefix}${href.message || href}`);
+                removeMenusAboutForumThread();
+                return href;
+            }
+
             const shouldRedirectOnPageLoad = typeof location.search === 'string' && location.search.includes(urlParamToDetectForImmediateRedirectInChapterPage);
-            if (shouldRedirectOnPageLoad) return await goToForumThread('replace');
+            if (shouldRedirectOnPageLoad) {
+                console.log(`${consolePrefix}Found \`${urlParamToDetectForImmediateRedirectInChapterPage}\` in url, will redirect immediately.`)
+                return await goToForumThread('replace');
+            }
 
             const outerCommentButton = await waitAndGetElement(queryChapterPageOuterCommentButton);
             if (outerCommentButton) {
@@ -133,21 +189,21 @@
                 }
                 //outerCommentButton.classList.add(buttonScriptInitClassName);
             }
+
+            addMenusAboutForumThread();
             return 1;
         } catch (error) {
-            throw new Error(`${consolePrefix}Error: `, (error.msg || error));
+            console.error(`${consolePrefix}Catching some error: `, (error.message || error));
+            removeMenusAboutForumThread();
+            return error;
         }
     }
 
     actionOnChapterPageLoad(); // run action once on script init
 
-    if (menulabelCopyForumThreadLink) GM_registerMenuCommand(menulabelCopyForumThreadLink, copyToClipboardHrefToForumThread);
-    if (menulabelOpenForumThreadNewTab) GM_registerMenuCommand(menulabelOpenForumThreadNewTab, async () => await goToForumThread('newtab'));
-    if (menulabelOpenForumThreadSameTab) GM_registerMenuCommand(menulabelOpenForumThreadSameTab, async () => await goToForumThread());
-
     if ('navigation' in window) {
-        console.log(`${consolePrefix}Add event listener for "navigatesuccess" to support modern web app navigation.`);
-        let oldNavUrlPortion = '';
+        console.log(`${consolePrefix}Add event listener for \`navigatesuccess\` to support modern web app navigation.`);
+        let oldNavPathname = '';
         window.navigation.addEventListener('navigatesuccess', (e) => {
             const newNavUrlString = (
                 'target' in e && typeof e.target === 'object' &&
@@ -156,13 +212,15 @@
             ) ? e.target.currentEntry.url : null;
             if (newNavUrlString) {
                 const newNavUrl = new URL(newNavUrlString);
-                const getCurrentPageUrlPortion = newNavUrl.pathname.match(regexUrlPathnameToGetCurrentLocationWithoutPage);
-                const newNavUrlPortion = getCurrentPageUrlPortion && getCurrentPageUrlPortion[1];
-                if (newNavUrlPortion) {
+                const newNavPathname = newNavUrl.pathname;
+                const getNewNavPathnamePortion = newNavPathname.match(regexUrlPathnameToGetCurrentLocationWithoutPage);
+                const newNavPathnamePortion = getNewNavPathnamePortion && getNewNavPathnamePortion[1];
+                if (newNavPathnamePortion) {
                     // Check if it's still the same chapter but with different page
+                    // by comparing starting portion of pathname
                     // (e.g. `/chapter/{ID}`, `/chapter/{ID}/1`, `/chapter/{ID}/2` all count as same location)
-                    if (oldNavUrlPortion === newNavUrlPortion) return;
-                    oldNavUrlPortion = newNavUrlPortion;
+                    if (oldNavPathname.startsWith(newNavPathnamePortion)) return;
+                    oldNavPathname = newNavPathname;
                 }
             }
             actionOnChapterPageLoad();
