@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MangaDex - New Comment Section Skipper
 // @namespace    mangadex.org.newcommentsectionskipper
-// @version      1.3.1.20260514
+// @version      1.4.0-beta.20260628
 // @description  The new comment section annoys me, this script try to skip the need to click another button to get to the "old" comment page.
 // @author       twystpaki
 // @match        https://mangadex.org/*
@@ -18,15 +18,34 @@
 
     const consolePrefix = '[New Comment Section Skipper (UserJS)] ';
 
-    const queryChapterPageLinkToForumThread = '.md--reader-comments a.md-btn[href^="https://forums.mangadex.org/threads/"]';
-    const queryChapterPageOuterCommentButton = '.md--reader-menu .md-btn:has(svg > path:only-child[d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"])'; /** I know this is travesty, but this is the only way I know how to be specific with this button. */
-    //const queryChapterPageOuterCommentButton = '.md--reader-menu > .reader--menu > button.md-btn';
+    const hrefForumThreadStartsWith = 'https://forums.mangadex.org/threads/';
+
+    const queryChapterPageLinkToForumThread = `.md--reader-comments a.md-btn[href^="${hrefForumThreadStartsWith}" i]`;
+    const queryChapterPageCommentBtn = '.md--reader-menu .md-btn:has(svg > path:only-child[d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"])'; /** I know this is travesty, but this is the only way I know how to be specific with this button. */
+    //const queryChapterPageCommentBtn = '.md--reader-menu > .reader--menu > button.md-btn';
+
+    const tagNameCommentBtnLinkToForumThread = 'button';
+    const classNameCommentBtnLinkToForumThread = 'comment-container';
+    const attrCommentBtnLinkToForumThread = 'to';
+    const queryCommentBtnLinkToForumThread = `${tagNameCommentBtnLinkToForumThread}.${classNameCommentBtnLinkToForumThread}`;
+    const queryCommentBtnLinkToForumThreadValid = `${queryCommentBtnLinkToForumThread}[${attrCommentBtnLinkToForumThread}^="${hrefForumThreadStartsWith}" i]`;
+    const tagNameChapterLink = 'a';
+    const classNameChapterLink = 'chapter-grid';
+    const queryChapterLink = `${tagNameChapterLink}.${classNameChapterLink}`;
+    const queryChapterLinkValid = `${queryChapterLink}:has(> ${queryCommentBtnLinkToForumThread})`;
+
     const urlPathnameToDetectChapterPageStartsWith = '/chapter/';
     const urlParamToDetectForImmediateRedirectInChapterPage = 'comments=1';
     const regexUrlPathnameToGetCurrentLocationWithoutPage = /^(\/[a-z0-9\-]+\/[a-z0-9\-]+)\/?/i;
 
-    const outerCommentButtonAddClickEventToSkipToForumThread = true;
-    const outerCommentButtonAddMiddleClickEventToSkipToForumThread = true;
+    const clickEventsCheckerDataAttr = 'data-userjs-newcommentsectionskipper-click-events-added';
+    const queryClickEventsAdded = `[${clickEventsCheckerDataAttr}="true"]`;
+    const queryClickEventsNotAdded = `:not([${clickEventsCheckerDataAttr}="true"])`;
+
+    const chapterPageCommentBtnAddClickEventToSkipToForumThread = false; //true;
+    const chapterPageCommentBtnAddMiddleClickEventToSkipToForumThread = true;
+    const commentBtnAddClickEventToSkipToForumThread = false; //true;
+    const commentBtnAddMiddleClickEventToSkipToForumThread = true;
 
     const menulabelCopyForumThreadLink = 'Copy link to forum thread';
     const menulabelOpenForumThreadNewTab = 'Open forum thread in new tab';
@@ -66,14 +85,14 @@
         return linkToForumThread.href;
     }
 
-    async function copyToClipboardHrefToForumThread() {
+    async function copyToClipboardHrefToForumThreadFromChapterPage() {
         const href = await getHrefToForumThread();
         if (typeof href !== 'string') return;
         GM_setClipboard(href, 'text', () => console.log(`${consolePrefix}Copy link to forum thread to clipboard`));
     }
 
-    async function goToForumThread(method) {
-        const href = await getHrefToForumThread();
+    async function goToForumThread(method, forceHref = null) {
+        const href = typeof forceHref === 'string' && forceHref.startsWith(hrefForumThreadStartsWith) ? forceHref : await getHrefToForumThread();
         if (typeof href !== 'string') return;
         if (typeof method !== 'string') method = 'href';
         method = method.trim().toLowerCase();
@@ -98,24 +117,86 @@
         }
     }
 
-    async function outerCommentButtonLeftClickFn(e) {
+    async function chapterPageCommentBtnLeftClickFn(e) {
         e.preventDefault();
         await goToForumThread();
     }
-    function outerCommentButtonMiddleMouseDownFn(e) {
+    function chapterPageCommentBtnMiddleMouseDownFn(e) {
         if (e.button !== 1) return;
         e.preventDefault();
     }
-    async function outerCommentButtonMiddleMouseUpFn(e) {
+    async function chapterPageCommentBtnMiddleMouseUpFn(e) {
         if (e.button !== 1) return;
         e.preventDefault();
         await goToForumThread('newtab');
     }
 
+    function generalCommentBtnGetHrefToForumThread(e) {
+        if (typeof e !== 'object' || !('target' in e) || !e.target) return null;
+        const targetElement = e.target.closest(queryCommentBtnLinkToForumThreadValid);
+        if (!targetElement) return null;
+        // Target element validations
+        //if (typeof targetElement !== 'object') return null;
+        //if (!(targetElement instanceof Element)) return null;
+        //if (targetElement.tagName !== tagNameCommentBtnLinkToForumThread.toUpperCase()) return null;
+        //if (!targetElement.classList.contains(classNameCommentBtnLinkToForumThread)) return null;
+        return targetElement.getAttribute(attrCommentBtnLinkToForumThread);
+        //const targetAttr = targetElement.getAttribute(attrCommentBtnLinkToForumThread);
+        //if (!targetAttr || !targetAttr.startsWith(hrefForumThreadStartsWith)) return null;
+        //return targetAttr;
+    }
+    async function generalCommentBtnLeftClickFn(e) {
+        e.preventDefault();
+        const href = generalCommentBtnGetHrefToForumThread(e);
+        if (!href) return;
+        await goToForumThread(null, href);
+    }
+    function generalCommentBtnMiddleMouseDownFn(e) {
+        if (e.button !== 1) return;
+        e.preventDefault();
+    }
+    async function generalCommentBtnMiddleMouseUpFn(e) {
+        if (e.button !== 1) return;
+        e.preventDefault();
+        const href = generalCommentBtnGetHrefToForumThread(e);
+        if (!href) return;
+        await goToForumThread('newtab', href);
+    }
+
+    async function chapterLinkCommentBtnLeftClickFn(e) {
+        e.preventDefault();
+        const href = generalCommentBtnGetHrefToForumThread(e);
+        if (!href) return;
+        await goToForumThread(null, href);
+    }
+    function chapterLinkGetHrefToForumThread(e) {
+        if (typeof e !== 'object' || !('target' in e) || !e.target) return null;
+        const targetElement = e.target.closest(queryCommentBtnLinkToForumThreadValid) || e.originalTarget.query(queryCommentBtnLinkToForumThreadValid);
+        if (!targetElement) return null;
+        // Target element validations
+        //if (typeof targetElement !== 'object') return null;
+        //if (!(targetElement instanceof Element)) return null;
+        //if (targetElement.tagName !== tagNameCommentBtnLinkToForumThread.toUpperCase()) return null;
+        //if (!targetElement.classList.contains(classNameCommentBtnLinkToForumThread)) return null;
+        return targetElement.getAttribute(attrCommentBtnLinkToForumThread);
+        //const targetAttr = targetElement.getAttribute(attrCommentBtnLinkToForumThread);
+        //if (!targetAttr || !targetAttr.startsWith(hrefForumThreadStartsWith)) return null;
+        //return targetAttr;
+    }
+    async function chapterLinkMiddleClickFn(e) {
+        if (e.button !== 1) return;
+        const targetElement = e.target.closest(queryCommentBtnLinkToForumThread);
+        if (!targetElement) return null;
+        e.preventDefault();
+        const href = chapterLinkGetHrefToForumThread(e);
+        if (!href) return;
+        await goToForumThread('newtab', href);
+    }
+
     let menuIdCopyForumThreadLink = null;
     let menuIdOpenForumThreadNewTab = null;
     let menuIdOpenForumThreadSameTab = null;
-    function addMenusAboutForumThread() {
+    function addMenusAboutForumThreadOnChapterPage() {
         if (!([
             menuIdCopyForumThreadLink,
             menuIdOpenForumThreadNewTab,
@@ -123,7 +204,7 @@
         ].includes(null))) return;
         console.log(`${consolePrefix}Registering menus related to forum thread`);
         if (menuIdCopyForumThreadLink === null && menulabelCopyForumThreadLink) {
-            menuIdCopyForumThreadLink = GM_registerMenuCommand(menulabelCopyForumThreadLink, copyToClipboardHrefToForumThread);
+            menuIdCopyForumThreadLink = GM_registerMenuCommand(menulabelCopyForumThreadLink, copyToClipboardHrefToForumThreadFromChapterPage);
         }
         if (menuIdOpenForumThreadNewTab === null && menulabelOpenForumThreadNewTab) {
             menuIdOpenForumThreadNewTab = GM_registerMenuCommand(menulabelOpenForumThreadNewTab, async () => await goToForumThread('newtab'));
@@ -132,7 +213,7 @@
             menuIdOpenForumThreadSameTab = GM_registerMenuCommand(menulabelOpenForumThreadSameTab, async () => await goToForumThread());
         }
     }
-    function removeMenusAboutForumThread() {
+    function removeMenusAboutForumThreadOnChapterPage() {
         if ([
             menuIdCopyForumThreadLink,
             menuIdOpenForumThreadNewTab,
@@ -153,10 +234,10 @@
         }
     }
 
-    async function actionOnChapterPageLoad() {
+    async function actionOnPageLoad() {
         if (!location.pathname.startsWith(urlPathnameToDetectChapterPageStartsWith)) {
             console.log(`${consolePrefix}Non-chapter page detected.`);
-            removeMenusAboutForumThread();
+            removeMenusAboutForumThreadOnChapterPage();
             return -1;
         }
         console.log(`${consolePrefix}Chapter page detected, perform main action of userscript.`);
@@ -164,7 +245,7 @@
             const href = await getHrefToForumThread();
             if (typeof href !== 'string') {
                 console.error(`${consolePrefix}${href.message || href}`);
-                removeMenusAboutForumThread();
+                removeMenusAboutForumThreadOnChapterPage();
                 return href;
             }
 
@@ -174,32 +255,31 @@
                 return await goToForumThread('replace');
             }
 
-            const outerCommentButton = await waitAndGetElement(queryChapterPageOuterCommentButton);
-            if (outerCommentButton) {
-                //const buttonScriptInitClassName = 'newcommentsectionskipper-userscript-already-init';
-                //if (outerCommentButton.classList.contains(buttonScriptInitClassName)) return;
-                if (outerCommentButtonAddClickEventToSkipToForumThread) {
+            const chapterPageCommentBtn = await waitAndGetElement(queryChapterPageCommentBtn);
+            if (chapterPageCommentBtn) {
+                if (chapterPageCommentBtn.getAttribute(clickEventsCheckerDataAttr) === 'true') return;
+                if (chapterPageCommentBtnAddClickEventToSkipToForumThread) {
                     console.log(`${consolePrefix}Add custom click event for "outer comment button" in the sidebar.`);
-                    outerCommentButton.addEventListener('click', outerCommentButtonLeftClickFn);
+                    chapterPageCommentBtn.addEventListener('click', chapterPageCommentBtnLeftClickFn);
                 }
-                if (outerCommentButtonAddMiddleClickEventToSkipToForumThread) {
+                if (chapterPageCommentBtnAddMiddleClickEventToSkipToForumThread) {
                     console.log(`${consolePrefix}Add custom middle-click event for "outer comment button" in the sidebar.`);
-                    outerCommentButton.addEventListener('mousedown', outerCommentButtonMiddleMouseDownFn);
-                    outerCommentButton.addEventListener('mouseup', outerCommentButtonMiddleMouseUpFn);
+                    chapterPageCommentBtn.addEventListener('mousedown', chapterPageCommentBtnMiddleMouseDownFn);
+                    chapterPageCommentBtn.addEventListener('mouseup', chapterPageCommentBtnMiddleMouseUpFn);
                 }
-                //outerCommentButton.classList.add(buttonScriptInitClassName);
+                chapterPageCommentBtn.setAttribute(clickEventsCheckerDataAttr, 'true');
             }
 
-            addMenusAboutForumThread();
+            addMenusAboutForumThreadOnChapterPage();
             return 1;
         } catch (error) {
             console.error(`${consolePrefix}Catching some error: `, (error.message || error));
-            removeMenusAboutForumThread();
+            removeMenusAboutForumThreadOnChapterPage();
             return error;
         }
     }
 
-    actionOnChapterPageLoad(); // run action once on script init
+    actionOnPageLoad(); // run action once on script init
 
     if ('navigation' in window) {
         console.log(`${consolePrefix}Add event listener for \`navigatesuccess\` to support modern web app navigation.`);
@@ -223,8 +303,83 @@
                     oldNavPathname = newNavPathname;
                 }
             }
-            actionOnChapterPageLoad();
+            actionOnPageLoad();
         });
+    }
+
+    // Add click events for general comment buttons (those not on chapter reader page)
+    let observerForCommentBtns = null;
+    if (commentBtnAddClickEventToSkipToForumThread || commentBtnAddMiddleClickEventToSkipToForumThread) {
+        console.log(`${consolePrefix}Add MutationObserver for adding click events to "general comment buttons".`);
+        observerForCommentBtns = new MutationObserver((mutationList, observer) => {
+            let isInsideChapterLink = false;
+            if (!mutationList.some(mutation => {
+                if (typeof mutation !== 'object' || !('target' in mutation) || !mutation.target) return null;
+                const targetElement = mutation.target;
+                if (typeof targetElement !== 'object') return false;
+                if (!(targetElement instanceof Element)) return false;
+                // Target element validations
+                //if (targetElement.tagName !== tagNameCommentBtnLinkToForumThread.toUpperCase()) return false;
+                //if (!targetElement.classList.contains(classNameCommentBtnLinkToForumThread)) return false;
+                if (!targetElement.matches(queryCommentBtnLinkToForumThread)) return false;
+                if (typeof targetElement.parentElement !== 'object') return false;
+                if (targetElement.parentElement.matches(queryChapterLinkValid)) isInsideChapterLink = true;
+                return true;
+            })) return;
+            if (isInsideChapterLink) {
+                const chapterLinks = document.querySelectorAll(queryChapterLinkValid);
+                chapterLinks.forEach(chapterLink => {
+                    // Check first if click events are added already
+                    //if (chapterLink.getAttribute(clickEventsCheckerDataAttr) === 'true') return;
+                    // Get comment button inside
+                    const commentBtn = chapterLink.querySelector(queryCommentBtnLinkToForumThread);
+                    if (!commentBtn) return;
+                    // If not added yet, check if valid href
+                    //const href = commentBtn.getAttribute(attrCommentBtnLinkToForumThread);
+                    //if (!href || !href.startsWith(hrefForumThreadStartsWith)) return;
+                    // Add click events
+                    // Check first if click events are added already
+                    if (chapterLink.getAttribute(clickEventsCheckerDataAttr) !== 'true') {
+                        if (commentBtnAddMiddleClickEventToSkipToForumThread) {
+                            chapterLink.addEventListener('auxclick', chapterLinkMiddleClickFn);
+                        }
+                        chapterLink.setAttribute(clickEventsCheckerDataAttr, 'true');
+                    }
+                    // Check first if click events are added already (for comment button)
+                    if (commentBtn.getAttribute(clickEventsCheckerDataAttr) !== 'true') {
+                        if (commentBtnAddClickEventToSkipToForumThread) {
+                            commentBtn.addEventListener('click', chapterLinkCommentBtnLeftClickFn);
+                        }
+                        commentBtn.setAttribute(clickEventsCheckerDataAttr, 'true');
+                    }
+                });
+                console.log(`${consolePrefix}Chapter Links: `, chapterLinks);
+                if (commentBtnAddClickEventToSkipToForumThread) console.log(`${consolePrefix}Add custom click event for comment buttons in chapter links.`);
+                if (commentBtnAddMiddleClickEventToSkipToForumThread) console.log(`${consolePrefix}Add custom middle-click event for comment buttons in chapter links.`);
+            } else {
+                const commentBtns = document.querySelectorAll(queryCommentBtnLinkToForumThread);
+                commentBtns.forEach(commentBtn => {
+                    // Check first if click events are added already
+                    if (commentBtn.getAttribute(clickEventsCheckerDataAttr) === 'true') return;
+                    // If not added yet, check if valid href
+                    //const href = commentBtn.getAttribute(attrCommentBtnLinkToForumThread);
+                    //if (!href || !href.startsWith(hrefForumThreadStartsWith)) return;
+                    // Add click events
+                    if (commentBtnAddClickEventToSkipToForumThread) {
+                        commentBtn.addEventListener('click', generalCommentBtnLeftClickFn);
+                    }
+                    if (commentBtnAddMiddleClickEventToSkipToForumThread) {
+                        commentBtn.addEventListener('mousedown', generalCommentBtnMiddleMouseDownFn);
+                        commentBtn.addEventListener('mouseup', generalCommentBtnMiddleMouseUpFn);
+                    }
+                    commentBtn.setAttribute(clickEventsCheckerDataAttr, 'true');
+                });
+                console.log(`${consolePrefix}General Comment Buttons: `, commentBtns);
+                if (commentBtnAddClickEventToSkipToForumThread) console.log(`${consolePrefix}Add custom click event for "general comment buttons".`);
+                if (commentBtnAddMiddleClickEventToSkipToForumThread) console.log(`${consolePrefix}Add custom middle-click event for "general comment buttons".`);
+            }
+        });
+        observerForCommentBtns.observe(document.body, { childList: true, subtree: true });
     }
 
 })();
