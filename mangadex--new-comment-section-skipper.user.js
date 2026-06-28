@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MangaDex - New Comment Section Skipper
 // @namespace    mangadex.org.newcommentsectionskipper
-// @version      1.4.0-beta.20260628
+// @version      1.4.0.20260628
 // @description  The new comment section annoys me, this script try to skip the need to click another button to get to the "old" comment page.
 // @author       twystpaki
 // @match        https://mangadex.org/*
@@ -42,9 +42,9 @@
     const queryClickEventsAdded = `[${clickEventsCheckerDataAttr}="true"]`;
     const queryClickEventsNotAdded = `:not([${clickEventsCheckerDataAttr}="true"])`;
 
-    const chapterPageCommentBtnAddClickEventToSkipToForumThread = false; //true;
+    const chapterPageCommentBtnAddClickEventToSkipToForumThread = true;
     const chapterPageCommentBtnAddMiddleClickEventToSkipToForumThread = true;
-    const commentBtnAddClickEventToSkipToForumThread = false; //true;
+    const commentBtnAddClickEventToSkipToForumThread = true;
     const commentBtnAddMiddleClickEventToSkipToForumThread = true;
 
     const menulabelCopyForumThreadLink = 'Copy link to forum thread';
@@ -55,6 +55,9 @@
       * but for this script, it will wait for the button that link to forum thread to appear (using MutationObserver),
       * then add custom click event to "outer comment button" that's in the sidebar of chapter reading page,
       * or automatically redirect to forum thread if you click "comment icon" from outside the chapter reading page (when there's `?comments=1` in url).
+      *
+      * EDITED (v1.4.0): For non-chapter page, now there's an attribute of the comment button itself that contains link to forum thread,
+      *                  So I just add custom click events to the button that will get link from the attribute and open it in new tab/redirect to it.
       */
 
     if (typeof MutationObserver !== 'function') throw new Error(`${consolePrefix}MutationObserver is needed for the userscript, but this browser doesn't seem to support it.`);
@@ -135,15 +138,7 @@
         if (typeof e !== 'object' || !('target' in e) || !e.target) return null;
         const targetElement = e.target.closest(queryCommentBtnLinkToForumThreadValid);
         if (!targetElement) return null;
-        // Target element validations
-        //if (typeof targetElement !== 'object') return null;
-        //if (!(targetElement instanceof Element)) return null;
-        //if (targetElement.tagName !== tagNameCommentBtnLinkToForumThread.toUpperCase()) return null;
-        //if (!targetElement.classList.contains(classNameCommentBtnLinkToForumThread)) return null;
         return targetElement.getAttribute(attrCommentBtnLinkToForumThread);
-        //const targetAttr = targetElement.getAttribute(attrCommentBtnLinkToForumThread);
-        //if (!targetAttr || !targetAttr.startsWith(hrefForumThreadStartsWith)) return null;
-        //return targetAttr;
     }
     async function generalCommentBtnLeftClickFn(e) {
         e.preventDefault();
@@ -173,15 +168,7 @@
         if (typeof e !== 'object' || !('target' in e) || !e.target) return null;
         const targetElement = e.target.closest(queryCommentBtnLinkToForumThreadValid) || e.originalTarget.query(queryCommentBtnLinkToForumThreadValid);
         if (!targetElement) return null;
-        // Target element validations
-        //if (typeof targetElement !== 'object') return null;
-        //if (!(targetElement instanceof Element)) return null;
-        //if (targetElement.tagName !== tagNameCommentBtnLinkToForumThread.toUpperCase()) return null;
-        //if (!targetElement.classList.contains(classNameCommentBtnLinkToForumThread)) return null;
         return targetElement.getAttribute(attrCommentBtnLinkToForumThread);
-        //const targetAttr = targetElement.getAttribute(attrCommentBtnLinkToForumThread);
-        //if (!targetAttr || !targetAttr.startsWith(hrefForumThreadStartsWith)) return null;
-        //return targetAttr;
     }
     async function chapterLinkMiddleClickFn(e) {
         if (e.button !== 1) return;
@@ -318,25 +305,16 @@
                 const targetElement = mutation.target;
                 if (typeof targetElement !== 'object') return false;
                 if (!(targetElement instanceof Element)) return false;
-                // Target element validations
-                //if (targetElement.tagName !== tagNameCommentBtnLinkToForumThread.toUpperCase()) return false;
-                //if (!targetElement.classList.contains(classNameCommentBtnLinkToForumThread)) return false;
                 if (!targetElement.matches(queryCommentBtnLinkToForumThread)) return false;
-                if (typeof targetElement.parentElement !== 'object') return false;
-                if (targetElement.parentElement.matches(queryChapterLinkValid)) isInsideChapterLink = true;
+                if (typeof targetElement.parentElement === 'object' && targetElement.parentElement.matches(queryChapterLink)) isInsideChapterLink = true;
                 return true;
             })) return;
             if (isInsideChapterLink) {
                 const chapterLinks = document.querySelectorAll(queryChapterLinkValid);
                 chapterLinks.forEach(chapterLink => {
-                    // Check first if click events are added already
-                    //if (chapterLink.getAttribute(clickEventsCheckerDataAttr) === 'true') return;
                     // Get comment button inside
                     const commentBtn = chapterLink.querySelector(queryCommentBtnLinkToForumThread);
                     if (!commentBtn) return;
-                    // If not added yet, check if valid href
-                    //const href = commentBtn.getAttribute(attrCommentBtnLinkToForumThread);
-                    //if (!href || !href.startsWith(hrefForumThreadStartsWith)) return;
                     // Add click events
                     // Check first if click events are added already
                     if (chapterLink.getAttribute(clickEventsCheckerDataAttr) !== 'true') {
@@ -361,9 +339,6 @@
                 commentBtns.forEach(commentBtn => {
                     // Check first if click events are added already
                     if (commentBtn.getAttribute(clickEventsCheckerDataAttr) === 'true') return;
-                    // If not added yet, check if valid href
-                    //const href = commentBtn.getAttribute(attrCommentBtnLinkToForumThread);
-                    //if (!href || !href.startsWith(hrefForumThreadStartsWith)) return;
                     // Add click events
                     if (commentBtnAddClickEventToSkipToForumThread) {
                         commentBtn.addEventListener('click', generalCommentBtnLeftClickFn);
